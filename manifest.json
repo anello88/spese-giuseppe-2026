@@ -1,0 +1,19 @@
+{
+  "name": "Contabilità Personale - Giuseppe Anello",
+  "short_name": "Spese & Redditi",
+  "description": "App PWA per gestione Spese, Redditi, Risparmi, Debiti e Budget Mensile/Annuale",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "lang": "it-IT",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
