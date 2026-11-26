@@ -144,13 +144,13 @@
       state.data.invoices = [];
     }
     if (!state.data.taxSettings || state.data.taxSettings.f24JuneTotal === undefined) {
+      // Scomposizione REALE dai PDF F24 (22/06/2026 e 30/11/2026)
       state.data.taxSettings = {
         coeff: 86,
         irpefRate: 5,
         inpsRate: 26.07,
-        f24JuneTotal: 1290.73,
-        paidJune: 1290.73,
-        paidNov: 1059.74
+        june: { inps: 907.23, imposta: 152.50, saldoPrev: 379.00, credito: 148.00 },
+        nov: { inps: 907.24, imposta: 152.50 }
       };
     }
     // Apply sensible Needs vs Wants defaults if only 1 expense had flag=true from Excel
@@ -963,10 +963,10 @@
     document.getElementById('invYearLabel').textContent = state.selectedYear;
 
     const ts = state.data.taxSettings;
-    // Get paid F24 for the current selectedYear (auto-carryover from previous year if not manually overridden for this year)
+    // Get paid F24 breakdown for the current selectedYear (auto-carryover from previous year)
     if (!state.data.taxPaidByYear) {
       state.data.taxPaidByYear = {
-        2026: { june: 1290.73, nov: 1059.74 }
+        2026: { june: { inps: 907.23, imposta: 152.50, saldoPrev: 379.00, credito: 148.00 }, nov: { inps: 907.24, imposta: 152.50 } }
       };
     }
 
@@ -980,37 +980,38 @@
       const impNetto = Math.max(0, impLordo - inps);
       const irpef = impNetto * ((Number(ts.irpefRate) || 5) / 100);
       const totComp = inps + irpef;
-      const acc1 = inps * 0.40 + irpef * 0.40;
-      const acc2 = inps * 0.40 + irpef * 0.60;
+      // Regola commercialista: acconto INPS = 80% (40% giu + 40% nov), acconto imposta = 100% (50% giu + 50% nov)
+      const acc1 = inps * 0.40 + irpef * 0.50;
+      const acc2 = inps * 0.40 + irpef * 0.50;
       return { fatt, impLordo, inps, irpef, totComp, acc1, acc2, count: yrInvs.length };
     }
 
-    // If user switches to 2027 (or any future year) and hasn't manually set paid F24 for 2027 yet,
-    // automatically carry over the 1st and 2nd Acconto calculated from the previous year (2026)!
+    // Auto-carryover: switching to 2027 imports the acconti computed on 2026
     if (!state.data.taxPaidByYear[state.selectedYear]) {
       const prevSummary = computeYearTaxSummary(state.selectedYear - 1);
       if (prevSummary.count > 0) {
         state.data.taxPaidByYear[state.selectedYear] = {
-          june: Math.round(prevSummary.acc1 * 100) / 100,
-          nov: Math.round(prevSummary.acc2 * 100) / 100
+          june: { inps: Math.round(prevSummary.inps * 0.40 * 100) / 100, imposta: Math.round(prevSummary.irpef * 0.50 * 100) / 100, saldoPrev: Math.round(Math.max(0, prevSummary.inps - prevSummary.inps * 0.80) * 100) / 100, credito: 0 },
+          nov: { inps: Math.round(prevSummary.inps * 0.40 * 100) / 100, imposta: Math.round(prevSummary.irpef * 0.50 * 100) / 100 }
         };
       } else {
-        state.data.taxPaidByYear[state.selectedYear] = {
-          june: Number(ts.paidJune) || 0,
-          nov: Number(ts.paidNov) || 0
-        };
+        state.data.taxPaidByYear[state.selectedYear] = { june: { inps: 0, imposta: 0, saldoPrev: 0, credito: 0 }, nov: { inps: 0, imposta: 0 } };
       }
     }
 
-    const currentYearPaid = state.data.taxPaidByYear[state.selectedYear];
-    ts.paidJune = currentYearPaid.june;
-    ts.paidNov = currentYearPaid.nov;
+    const curPaid = state.data.taxPaidByYear[state.selectedYear];
+    ts.june = curPaid.june;
+    ts.nov = curPaid.nov;
 
     document.getElementById('taxCoeff').value = ts.coeff;
     document.getElementById('taxIrpefRate').value = ts.irpefRate;
     document.getElementById('taxInpsRate').value = ts.inpsRate;
-    document.getElementById('taxPaidJune').value = currentYearPaid.june;
-    document.getElementById('taxPaidNov').value = currentYearPaid.nov;
+    document.getElementById('taxJuneInps').value = ts.june.inps;
+    document.getElementById('taxJuneImp').value = ts.june.imposta;
+    document.getElementById('taxJuneSaldo').value = ts.june.saldoPrev;
+    document.getElementById('taxJuneCredito').value = ts.june.credito;
+    document.getElementById('taxNovInps').value = ts.nov.inps;
+    document.getElementById('taxNovImp').value = ts.nov.imposta;
 
     // Filter invoices for selectedYear
     const yearInvoices = state.data.invoices.filter(
@@ -1023,39 +1024,39 @@
     const fatturatoImponibile = yearInvoices.reduce((s, i) => s + (Number(i.amount) || 0), 0);
     const bolliTotali = yearInvoices.reduce((s, i) => s + (Number(i.stamp) || 0), 0);
 
-    // Calcolo Ufficiale Commercialista Regime Forfettario (ATECO 68.32.00 - Amministratore di Condominio):
-    // 1) Reddito Imponibile Lordo = Fatturato * 86%
+    // Calcolo Ufficiale dal PDF F24 (Regime Forfettario ATECO 68.32.00):
     const redditoImponibile = fatturatoImponibile * ((Number(ts.coeff) || 86) / 100);
-
-    // 2) Contributi INPS Gestione Separata (26,07% sul Reddito Imponibile 86%)
     const inpsDovuta = redditoImponibile * ((Number(ts.inpsRate) || 26.07) / 100);
 
-    // 3) Deduzione INPS per l'Imposta Sostitutiva (5%)
-    const imponibileNettoIrpef = Math.max(0, redditoImponibile - inpsDovuta);
-    const impostaSostitutiva = imponibileNettoIrpef * ((Number(ts.irpefRate) || 5) / 100);
+    // Deduzione INPS per l'imposta: criterio di cassa (contributi VERSATI nell'anno 2026)
+    // = acconti INPS 2026 (giu+nov) + saldo INPS 2025 pagato a giugno 2026
+    const inpsPagataNellAnno = (Number(ts.june.inps) || 0) + (Number(ts.june.saldoPrev) || 0) + (Number(ts.nov.inps) || 0);
+    const imponibileNettoIrpef = Math.max(0, redditoImponibile - inpsPagataNellAnno);
+    const impostaDovuta = imponibileNettoIrpef * ((Number(ts.irpefRate) || 5) / 100);
 
-    // Totale Tasse + INPS di competenza dell'anno
-    const totaleTasseCompetenza = impostaSostitutiva + inpsDovuta;
+    const totaleTasseCompetenza = impostaDovuta + inpsDovuta;
 
-    // Totale Acconti già versati nel corso dell'anno (1° Acconto Giugno + 2° Acconto Novembre 1.059,74 €)
-    const totaleAccontiVersati = (Number(ts.paidJune) || 0) + (Number(ts.paidNov) || 0);
+    // Acconti già versati per l'anno in corso (dal PDF F24):
+    const accontiInpsVersati = (Number(ts.june.inps) || 0) + (Number(ts.nov.inps) || 0);
+    const accontiImpostaVersati = (Number(ts.june.imposta) || 0) + (Number(ts.nov.imposta) || 0);
+    const totaleAccontiVersati = accontiInpsVersati + accontiImpostaVersati;
 
-    // SALDO ANNO CORRENTE da pagare a Giugno dell'anno prossimo:
-    const saldoAnnoCorrente = Math.max(0, totaleTasseCompetenza - totaleAccontiVersati);
+    // SALDO ANNO CORRENTE (spaccato INPS + Imposta come fa il commercialista):
+    const saldoInps = Math.max(0, inpsDovuta - accontiInpsVersati);
+    const saldoImposta = Math.max(0, impostaDovuta - accontiImpostaVersati);
+    const saldoAnnoCorrente = saldoInps + saldoImposta;
     const eventualeCredito = Math.max(0, totaleAccontiVersati - totaleTasseCompetenza);
 
-    // ACCONTI PER L'ANNO PROSSIMO (Regole Ufficiali Agenzia delle Entrate & INPS):
-    // - INPS Gestione Separata: l'acconto complessivo è l'80% del contributo dovuto (40% a Giugno + 40% a Novembre)
-    // - Imposta Sostitutiva (5%): l'acconto complessivo è il 100% dell'imposta dovuta (40% a Giugno + 60% a Novembre per soggetti ISA/Forfettari, o 50%+50%)
+    // ACCONTI ANNO PROSSIMO (regole commercialista dai PDF):
+    // - INPS: 80% del dovuto, diviso 40% a Giugno + 40% a Novembre
+    // - Imposta: 100% del dovuto, diviso 50% a Giugno + 50% a Novembre
     const accontoInpsGiugno = inpsDovuta * 0.40;
     const accontoInpsNovembre = inpsDovuta * 0.40;
-
-    const accontoImpostaGiugno = impostaSostitutiva * 0.40;
-    const accontoImpostaNovembre = impostaSostitutiva * 0.60;
+    const accontoImpostaGiugno = impostaDovuta * 0.50;
+    const accontoImpostaNovembre = impostaDovuta * 0.50;
 
     const primoAccontoGiugno = accontoInpsGiugno + accontoImpostaGiugno;
     const secondoAccontoNovembre = accontoInpsNovembre + accontoImpostaNovembre;
-    const totaleAccontiAnnoProssimo = primoAccontoGiugno + secondoAccontoNovembre;
 
     const totaleScadenzaGiugno = Math.max(0, saldoAnnoCorrente + primoAccontoGiugno - eventualeCredito);
     const totaleComplessivoF24AnnoProssimo = totaleScadenzaGiugno + secondoAccontoNovembre;
@@ -1074,19 +1075,15 @@
       <div class="kpi-card">
         <div class="kpi-label">🏛️ TOTALE COMPETENZA ${state.selectedYear}</div>
         <div class="kpi-value" style="color:var(--expense);">${fmtEuro(totaleTasseCompetenza)}</div>
-        <div class="kpi-sub">Imposta Sost. (${ts.irpefRate}%): <b>${fmtEuro(impostaSostitutiva)}</b></div>
+        <div class="kpi-sub">Imposta Sost. (${ts.irpefRate}%): <b>${fmtEuro(impostaDovuta)}</b></div>
         <div class="kpi-sub">INPS (${ts.inpsRate}%): <b>${fmtEuro(inpsDovuta)}</b></div>
       </div>
 
       <div class="kpi-card">
         <div class="kpi-label">⚖️ SALDO ${state.selectedYear} (SCALATI ACCONTI)</div>
         <div class="kpi-value" style="color:var(--debt);">${fmtEuro(saldoAnnoCorrente)}</div>
-        <div class="kpi-sub">Già versati (Giu+Nov): <b>${fmtEuro(totaleAccontiVersati)}</b></div>
-        <div class="kpi-sub">${
-          eventualeCredito > 0
-            ? `<b style="color:var(--income);">Credito di ${fmtEuro(eventualeCredito)}!</b>`
-            : `Restano da saldare a Giugno ${nextYear}`
-        }</div>
+        <div class="kpi-sub">Saldo INPS: <b>${fmtEuro(saldoInps)}</b></div>
+        <div class="kpi-sub">Saldo Imposta: <b>${fmtEuro(saldoImposta)}</b></div>
       </div>
 
       <div class="kpi-card">
@@ -1106,7 +1103,8 @@
         <div style="font-size:0.75rem; font-weight:800; color:var(--text-muted);">📅 1. SALDO ${state.selectedYear} (GIUGNO ${nextYear})</div>
         <div style="font-size:1.45rem; font-weight:800; color:var(--expense); margin:4px 0;">${fmtEuro(saldoAnnoCorrente)}</div>
         <div style="font-size:0.78rem; color:var(--text-muted); line-height:1.45;">
-          È la differenza tra il totale tasse ${state.selectedYear} (<b>${fmtEuro(totaleTasseCompetenza)}</b>) meno i <b>${fmtEuro(totaleAccontiVersati)}</b> che hai già pagato quest'anno (1.290,73 € + 1.059,74 €).
+          • Saldo INPS ${state.selectedYear} (cod. 5500): <b>${fmtEuro(saldoInps)}</b> — Dovuta ${fmtEuro(inpsDovuta)} − acconti ${fmtEuro(accontiInpsVersati)}<br/>
+          • Saldo Imposta (cod. 1792): <b>${fmtEuro(saldoImposta)}</b> — Dovuta ${fmtEuro(impostaDovuta)} − acconti ${fmtEuro(accontiImpostaVersati)}
         </div>
       </div>
 
@@ -1115,8 +1113,8 @@
         <div style="font-size:1.45rem; font-weight:800; color:var(--debt); margin:4px 0;">${fmtEuro(primoAccontoGiugno)}</div>
         <div style="font-size:0.78rem; color:var(--text-muted); line-height:1.45;">
           • 1° Acconto INPS (40%): <b>${fmtEuro(accontoInpsGiugno)}</b><br/>
-          • 1° Acconto Imposta 5% (40%): <b>${fmtEuro(accontoImpostaGiugno)}</b><br/>
-          <i>(Se pagato insieme al Saldo ${state.selectedYear} di ${fmtEuro(saldoAnnoCorrente)} fa ${fmtEuro(totaleScadenzaGiugno)}, rateizzabile in 6 rate da ${fmtEuro(totaleScadenzaGiugno / 6)}/mese)</i>
+          • 1° Acconto Imposta 5% (50%): <b>${fmtEuro(accontoImpostaGiugno)}</b><br/>
+          <i>(Somma col Saldo = ${fmtEuro(totaleScadenzaGiugno)}, rateizzabile in 6 rate da ${fmtEuro(totaleScadenzaGiugno / 6)}/mese)</i>
         </div>
       </div>
 
@@ -1125,7 +1123,7 @@
         <div style="font-size:1.45rem; font-weight:800; color:var(--primary); margin:4px 0;">${fmtEuro(secondoAccontoNovembre)}</div>
         <div style="font-size:0.78rem; color:var(--text-muted); line-height:1.45;">
           • 2° Acconto INPS (40%): <b>${fmtEuro(accontoInpsNovembre)}</b><br/>
-          • 2° Acconto Imposta 5% (60%): <b>${fmtEuro(accontoImpostaNovembre)}</b>
+          • 2° Acconto Imposta 5% (50%): <b>${fmtEuro(accontoImpostaNovembre)}</b>
         </div>
       </div>
     `;
@@ -1607,40 +1605,33 @@
       });
     });
 
-    // Tax simulator live parameters
-    ['taxCoeff', 'taxIrpefRate', 'taxInpsRate', 'taxPaidJune', 'taxPaidNov'].forEach((id) => {
+    // Tax simulator live parameters (scomposizione F24 dai PDF)
+    ['taxCoeff', 'taxIrpefRate', 'taxInpsRate', 'taxJuneInps', 'taxJuneImp', 'taxJuneSaldo', 'taxJuneCredito', 'taxNovInps', 'taxNovImp'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) {
         el.addEventListener('input', () => {
-          const jVal = parseFloat(document.getElementById('taxPaidJune').value) || 0;
-          const nVal = parseFloat(document.getElementById('taxPaidNov').value) || 0;
           state.data.taxSettings = {
             coeff: parseFloat(document.getElementById('taxCoeff').value) || 0,
             irpefRate: parseFloat(document.getElementById('taxIrpefRate').value) || 0,
             inpsRate: parseFloat(document.getElementById('taxInpsRate').value) || 0,
-            paidJune: jVal,
-            paidNov: nVal
+            june: {
+              inps: parseFloat(document.getElementById('taxJuneInps').value) || 0,
+              imposta: parseFloat(document.getElementById('taxJuneImp').value) || 0,
+              saldoPrev: parseFloat(document.getElementById('taxJuneSaldo').value) || 0,
+              credito: parseFloat(document.getElementById('taxJuneCredito').value) || 0
+            },
+            nov: {
+              inps: parseFloat(document.getElementById('taxNovInps').value) || 0,
+              imposta: parseFloat(document.getElementById('taxNovImp').value) || 0
+            }
           };
           if (!state.data.taxPaidByYear) state.data.taxPaidByYear = {};
-          state.data.taxPaidByYear[state.selectedYear] = { june: jVal, nov: nVal };
+          state.data.taxPaidByYear[state.selectedYear] = JSON.parse(JSON.stringify(state.data.taxSettings));
           saveData(false);
           renderTaxesView();
         });
       }
     });
-
-    const btnEstJune = document.getElementById('btnAutoEstimateJune');
-    if (btnEstJune) {
-      btnEstJune.addEventListener('click', () => {
-        const novVal = parseFloat(document.getElementById('taxPaidNov').value) || 1059.74;
-        // Calculate theoretical ratio between June (40% INPS + 40% IRPEF) and Nov (40% INPS + 60% IRPEF)
-        const estJune = Math.round(novVal * 0.9298 * 100) / 100;
-        document.getElementById('taxPaidJune').value = estJune;
-        state.data.taxSettings.paidJune = estJune;
-        saveData(true);
-        renderTaxesView();
-      });
-    }
 
     // Invoice buttons
     document.getElementById('btnNewInvoice').addEventListener('click', () => openInvModal(null));
