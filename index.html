@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="it" data-style="excel">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Spese & Redditi" />
+  <title>Spese & Redditi - Giuseppe Anello</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- BLOCCO CODICE PERSONALE GIUSEPPE (2410) CON DECRITTAZIONE AES-256 -->
+  <div id="personalPinGate" style="position:fixed; inset:0; z-index:9999; background:#0b1120; color:#f8fafc; display:flex; align-items:center; justify-content:center; padding:20px;">
+    <div style="background:#151f32; border:1px solid #26334d; border-radius:22px; padding:28px 24px; width:100%; max-width:360px; text-align:center; box-shadow:0 20px 40px rgba(0,0,0,0.6);">
+      <img src="icon.svg" alt="Logo" style="width:64px; height:64px; border-radius:16px; margin-bottom:12px;" />
+      <h2 style="font-size:1.22rem; font-weight:800; margin-bottom:6px;">🔒 Contabilità Personale</h2>
+      <p style="font-size:0.82rem; color:#94a3b8; margin-bottom:18px;">Inserisci il tuo PIN personale per decrittare e sbloccare l'app su questo dispositivo.</p>
+      <form id="personalPinForm">
+        <input type="password" id="personalPinInput" inputmode="numeric" maxlength="8" placeholder="••••" style="width:100%; text-align:center; font-size:1.6rem; letter-spacing:0.35em; font-weight:800; padding:12px; border-radius:12px; border:1px solid #334155; background:#0f172a; color:#10b981; outline:none; margin-bottom:12px;" required />
+        <div id="personalPinError" style="color:#f43f5e; font-size:0.78rem; font-weight:700; margin-bottom:10px; display:none;">❌ PIN errato. Riprova.</div>
+        <button type="submit" style="width:100%; background:#10b981; color:#fff; border:none; padding:12px; border-radius:12px; font-size:0.95rem; font-weight:800; cursor:pointer;">Sblocca App</button>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- Top Header with Style Preview Switcher -->
+  <header class="app-header">
+    <div class="header-top">
+      <div class="brand">
+        <img src="icon.svg" alt="Icona" class="brand-icon" />
+        <div>
+          <div class="brand-title" id="headerGreeting">Bentornato, Giuseppe Anello! 👋</div>
+          <div class="brand-sub" id="headerSubtitle">Dashboard Mensile • Novembre 2026</div>
+        </div>
+      </div>
+      <div class="header-controls">
+        <span id="syncStatusBadge" class="select-pill" style="font-size:0.74rem; padding:5px 10px; cursor:pointer;" title="Stato Sincronizzazione Automatica PC ↔ Cellulare (J: + D:)">🔄 Sync PC</span>
+        <select id="yearSelect" class="select-pill" title="Seleziona Anno"></select>
+      </div>
+    </div>
+
+    <!-- Barra Anteprima 5 Grafiche + Switch Confronto Layout -->
+    <div class="style-switcher-bar" id="styleSwitcherBar">
+      <span class="style-label">🎨 Grafica:</span>
+      <button class="style-chip active" data-style="excel">
+        <span class="swatch-dot" style="background:#5b8c5a;"></span> 1. Excel Pastello
+      </button>
+      <button class="style-chip" data-style="fintech">
+        <span class="swatch-dot" style="background:#10b981;"></span> 2. Fintech Scuro
+      </button>
+      <button class="style-chip" data-style="revolut">
+        <span class="swatch-dot" style="background:#2563eb;"></span> 3. Revolut Chiaro
+      </button>
+      <button class="style-chip" data-style="luxury">
+        <span class="swatch-dot" style="background:#d4af37;"></span> 4. Oro & Nero
+      </button>
+      <button class="style-chip" data-style="ocean">
+        <span class="swatch-dot" style="background:#06b6d4;"></span> 5. Blu Oceano
+      </button>
+      <span style="margin-left:auto; display:flex; gap:6px; align-items:center;">
+        <button class="style-chip active" id="btnToggleQuickBar" title="Mostra/Nascondi Tastiera Rapida">⚡ Tastiera Rapida: ON</button>
+        <button class="style-chip" id="btnToggleNeedsBox" title="Mostra/Nascondi Necessità vs Sfizi">⚖️ Necessità/Sfizi: OFF</button>
+      </span>
+    </div>
+  </header>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- Main Container -->
+  <main class="container">
+
+    <!-- Month Selector Strip (shown in Dashboard Mensile & Movimenti) -->
+    <div id="monthStrip" class="month-strip"></div>
+
+    <!-- ======================================================================
+         VIEW 1: DASHBOARD MENSILE (Come i fogli DASHBOARD MENSILE e GEN..DIC)
+         ====================================================================== -->
+    <section id="view-monthly" class="app-view">
+
+      <!-- ⚡ TASTIERA RAPIDA SPESE FREQUENTI (Accendibile/Spegnibile dal tasto in alto) -->
+      <div class="quick-expense-bar" id="quickExpenseContainer">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:7px;">
+          <span style="font-size:0.78rem; font-weight:800; color:var(--text-muted);">⚡ INSERIMENTO LAMPO SPESE FREQUENTI</span>
+          <span id="quickSelectedLabel" style="font-size:0.76rem; font-weight:700; color:var(--expense);">🛒 Spesa</span>
+        </div>
+        <div class="quick-cats-scroll" id="quickCatsBar"></div>
+        <form id="quickExpenseForm" class="quick-input-row">
+          <input type="number" id="quickAmount" class="input-field" step="0.01" placeholder="Importo € (es. 45)" style="flex:1; min-width:120px; padding:8px 11px;" required />
+          <input type="text" id="quickNote" class="input-field" placeholder="Nota opzionale (es. Conad, Q8...)" style="flex:1.4; min-width:140px; padding:8px 11px;" />
+          <button type="submit" class="btn btn-primary" style="padding:8px 14px; white-space:nowrap;">+ Aggiungi Subito</button>
+        </form>
+      </div>
+
+      <!-- 4 Main KPI Cards with Donut Ring -->
+      <div class="kpi-grid" id="monthlyKpiGrid"></div>
+
+      <!-- Residual Income Banner -->
+      <div class="residual-banner" id="monthlyResidualBanner"></div>
+
+      <!-- Charts Grid (2 columns when Needs is OFF, 3 columns when Needs is ON) -->
+      <div class="charts-grid" id="monthlyChartsGrid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
+        <div class="section-card" style="margin-bottom:0;">
+          <div class="section-header">
+            <div class="section-title">🍩 Ripartizione del Mese</div>
+          </div>
+          <div class="donut-breakdown-wrap" id="monthlyDonutWrap"></div>
+        </div>
+
+        <div class="section-card" id="monthlyNeedsCard" style="margin-bottom:0; display:none;">
+          <div class="section-header">
+            <div class="section-title">⚖️ Necessità Fisse vs Sfizi/Extra</div>
+            <span style="font-size:0.7rem; color:var(--text-muted);">Tocca una voce sotto per cambiarla</span>
+          </div>
+          <div id="monthlyNeedsVsWantsWrap"></div>
+        </div>
+
+        <div class="section-card" style="margin-bottom:0;">
+          <div class="section-header">
+            <div class="section-title">📊 Panoramica Spese Principali</div>
+          </div>
+          <div id="monthlyTopExpensesWrap"></div>
+        </div>
+      </div>
+
+      <!-- Category Breakdown (Budget vs Effettivo del Mese) -->
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">🎯 Dettaglio Mese: Budget vs Effettivo</div>
+          <div class="type-tabs" id="monthlyTypeTabs">
+            <button class="type-tab active" data-type="REDDITO">💶 Reddito</button>
+            <button class="type-tab" data-type="SPESE">🛒 Spese</button>
+            <button class="type-tab" data-type="DEBITI">💳 Debiti</button>
+            <button class="type-tab" data-type="RISPARMI">🐖 Risparmi</button>
+          </div>
+        </div>
+        <div id="monthlyCategoryBreakdown"></div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 2: DASHBOARD ANNUALE (Come il foglio DASHBOARD ANNUALE dell'Excel)
+         ====================================================================== -->
+    <section id="view-annual" class="app-view" style="display:none;">
+      <!-- 4 Annual KPI Cards -->
+      <div class="kpi-grid" id="annualKpiGrid"></div>
+
+      <!-- Annual Residual Banner -->
+      <div class="residual-banner" id="annualResidualBanner"></div>
+
+      <!-- Annual 12-Months Trend Bar Chart -->
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">📈 Andamento 12 Mesi (Gennaio – Dicembre)</div>
+          <div style="font-size:0.76rem; color:var(--text-muted); display:flex; gap:12px;">
+            <span><b style="color:var(--income);">●</b> Reddito</span>
+            <span><b style="color:var(--expense);">●</b> Uscite (Spese+Debiti)</span>
+          </div>
+        </div>
+        <div class="annual-chart" id="annualChart"></div>
+      </div>
+
+      <!-- Annual Needs vs Wants Summary (Accendibile/Spegnibile) -->
+      <div class="section-card" id="annualNeedsCard" style="display:none;">
+        <div class="section-header">
+          <div class="section-title">⚖️ Bilancio Annuo: Necessità Fisse vs Sfizi & Tempo Libero</div>
+        </div>
+        <div id="annualNeedsVsWantsWrap"></div>
+      </div>
+
+      <!-- Tabella Riepilogo Mese per Mese (Gen-Dic) -->
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">🗓️ Confronto Mese per Mese (Effettivo e Residuo)</div>
+        </div>
+        <div class="table-scroll">
+          <table class="budget-table" id="annualMonthsTable"></table>
+        </div>
+      </div>
+
+      <!-- Category Breakdown Annuale (Budget Annuo vs Effettivo Annuo) -->
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">🏆 Totale Annuo per Categoria (Budget vs Effettivo)</div>
+          <div class="type-tabs" id="annualTypeTabs">
+            <button class="type-tab active" data-type="REDDITO">💶 Reddito</button>
+            <button class="type-tab" data-type="SPESE">🛒 Spese</button>
+            <button class="type-tab" data-type="DEBITI">💳 Debiti</button>
+            <button class="type-tab" data-type="RISPARMI">🐖 Risparmi</button>
+          </div>
+        </div>
+        <div id="annualCategoryBreakdown"></div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 3: TRANSAZIONI / MOVIMENTI
+         ====================================================================== -->
+    <section id="view-transactions" class="app-view" style="display:none;">
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">🧾 Registro Transazioni (<span id="txCountLabel">0</span>)</div>
+          <button class="btn btn-primary" id="btnNewTxTop" style="padding:7px 13px; font-size:0.82rem;">+ Nuovo Movimento</button>
+        </div>
+
+        <div class="filters-bar">
+          <input type="text" id="txSearch" class="input-field" placeholder="🔍 Cerca categoria, descrizione o importo..." />
+          <select id="txTypeFilter" class="input-field">
+            <option value="ALL">Tutti i Tipi</option>
+            <option value="REDDITO">💶 Solo Reddito</option>
+            <option value="SPESE">🛒 Solo Spese</option>
+            <option value="DEBITI">💳 Solo Debiti</option>
+            <option value="RISPARMI">🐖 Solo Risparmi</option>
+          </select>
+          <select id="txCatFilter" class="input-field">
+            <option value="ALL">Tutte le Categorie</option>
+          </select>
+          <button class="btn btn-secondary" id="btnBatchIncome" title="Inserisci rapidamente i redditi ricorrenti del mese">⚡ Carica Redditi Mese</button>
+        </div>
+
+        <div id="txSummaryLine" style="font-size:0.82rem; color:var(--text-muted); margin-bottom:12px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;"></div>
+
+        <div class="tx-list" id="txList"></div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 4: FATTURE & CALCOLO TASSE / ACCONTI ANNO PROSSIMO
+         ====================================================================== -->
+    <section id="view-taxes" class="app-view" style="display:none;">
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <div class="section-title">🧮 Simulatore Tasse, INPS e Acconti Anno Prossimo (Regime Forfettario)</div>
+            <div style="font-size:0.78rem; color:var(--text-muted);">
+              Inserisci le tue fatture incassate nell'anno (o importale dai redditi dei condomini con 1 clic) per calcolare in tempo reale Saldo, 1° Acconto (Giugno) e 2° Acconto (Novembre).
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-secondary" id="btnImportInvoicesFromTx" style="padding:7px 12px; font-size:0.8rem;">⚡ Importa da Redditi Condomini</button>
+            <button class="btn btn-primary" id="btnNewInvoice" style="padding:7px 13px; font-size:0.82rem;">+ Nuova Fattura</button>
+          </div>
+        </div>
+
+        <!-- Parametri Fiscali Personalizzabili (Formula Ufficiale Commercialista Forfettario) -->
+        <div style="background:var(--bg-elevated); padding:14px; border-radius:var(--radius-sm); margin-bottom:16px; border:1px solid var(--border);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+            <div style="font-size:0.78rem; font-weight:800; color:var(--text-muted);">
+              ⚙️ PARAMETRI FISCALI FORFETTARIO (ATECO 68.32.00 AMMINISTRATORE DI CONDOMINIO)
+            </div>
+            <button type="button" class="btn btn-secondary" id="btnAutoEstimateJune" style="padding:4px 10px; font-size:0.74rem;" title="Nel regime forfettario il 1° acconto di Giugno è quasi identico al 2° acconto di Novembre">
+              🪄 Stima 1° Acconto Giugno = 2° Acconto Novembre
+            </button>
+          </div>
+          <div class="tax-params-grid">
+            <div>
+              <label class="form-label">Coeff. Redditività (%)</label>
+              <input type="number" id="taxCoeff" class="input-field" step="1" value="86" title="86% per Amministratori di Condominio (ATECO 68.32.00)" />
+            </div>
+            <div>
+              <label class="form-label">Imposta Sostitutiva (%)</label>
+              <input type="number" id="taxIrpefRate" class="input-field" step="1" value="5" title="5% per i primi 5 anni (sei al 4° anno), poi 15%" />
+            </div>
+            <div>
+              <label class="form-label">Aliquota INPS (%)</label>
+              <input type="number" id="taxInpsRate" class="input-field" step="0.01" value="26.07" title="Gestione Separata INPS (26,07%)" />
+            </div>
+            <div>
+              <label class="form-label">F24 Pagato a Giugno 2026 (€)</label>
+              <input type="number" id="taxPaidJune" class="input-field" step="0.01" value="1290.73" title="F24 pagato il 22 Giugno 2026 (1.290,73 €)" />
+            </div>
+            <div>
+              <label class="form-label">F24 Pagato a Novembre 2026 (€)</label>
+              <input type="number" id="taxPaidNov" class="input-field" step="0.01" value="1059.74" title="F24 pagato a Novembre 2026 (1.059,74 €)" />
+            </div>
+          </div>
+          <div style="font-size:0.76rem; color:var(--text-muted); margin-top:8px; line-height:1.45;">
+            ✅ <b>Calcolo diretto sulle fatture inserite qui sotto:</b> prende il totale delle tue fatture, calcola l'86% di imponibile, applica INPS (26,07%) e Imposta (5%), e scala i due F24 che hai pagato quest'anno (<b>1.290,73 €</b> a Giugno + <b>1.059,74 €</b> a Novembre = <b>2.350,47 €</b>).
+          </div>
+        </div>
+
+        <!-- Riepilogo Numerico Calcolo Tasse -->
+        <div class="kpi-grid" id="taxKpiGrid"></div>
+
+        <!-- Scadenziario F24 Anno Prossimo (Giugno e Novembre) -->
+        <div class="tax-grid" id="taxDeadlinesGrid"></div>
+      </div>
+
+      <!-- Elenco Fatture Emesse (max ~30/anno) -->
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">📄 Elenco Fatture Anno <span id="invYearLabel">2026</span> (<span id="invCountLabel">0</span> fatture)</div>
+        </div>
+        <div class="tx-list" id="invoicesList"></div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 5: BUDGET ANNUALE
+         ====================================================================== -->
+    <section id="view-budget" class="app-view" style="display:none;">
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <div class="section-title">📅 Tabella Budget Mensile e Annuale</div>
+            <div style="font-size:0.78rem; color:var(--text-muted);">Modifica qualsiasi cella per aggiornare subito il preventivo. Usa il tasto <b>⇄</b> per copiare Gennaio su tutti i 12 mesi.</div>
+          </div>
+          <div class="type-tabs" id="budgetTypeTabs">
+            <button class="type-tab active" data-type="REDDITO">Reddito</button>
+            <button class="type-tab" data-type="SPESE">Spese</button>
+            <button class="type-tab" data-type="RISPARMI">Risparmi</button>
+            <button class="type-tab" data-type="DEBITI">Debiti</button>
+          </div>
+        </div>
+
+        <div id="budgetAllocationSummary" style="margin-bottom:14px;"></div>
+
+        <div class="table-scroll">
+          <table class="budget-table" id="budgetTable"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 6: CATEGORIE
+         ====================================================================== -->
+    <section id="view-categories" class="app-view" style="display:none;">
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">🏷️ Le tue Categorie (Redditi, Spese, Risparmi, Debiti)</div>
+          <button class="btn btn-primary" id="btnNewCategory" style="padding:7px 13px; font-size:0.82rem;">+ Nuova Categoria</button>
+        </div>
+
+        <div class="type-tabs" id="catTypeTabs" style="margin-bottom:14px;">
+          <button class="type-tab active" data-type="REDDITO">Reddito</button>
+          <button class="type-tab" data-type="SPESE">Spese</button>
+          <button class="type-tab" data-type="DEBITI">Debiti</button>
+          <button class="type-tab" data-type="RISPARMI">Risparmi</button>
+        </div>
+
+        <div id="categoriesList"></div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 7: SALVATAGGIO & BACKUP PC/TELEFONO
+         ====================================================================== -->
+    <section id="view-backup" class="app-view" style="display:none;">
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">💾 Salvataggio Dati, Backup su PC e Cambio Cellulare</div>
+        </div>
+        <p style="font-size:0.86rem; color:var(--text-muted); margin-bottom:16px;">
+          Tutti i dati che inserisci vengono salvati <b>automaticamente nella memoria interna di questo dispositivo</b>.
+          Qui sotto puoi scaricare il file di salvataggio per metterlo al sicuro sul PC, passarlo su un nuovo cellulare o esportarlo per Excel.
+        </p>
+
+        <div class="backup-grid">
+          <div class="backup-box">
+            <div>
+              <div style="font-weight:700; margin-bottom:4px;">📥 1. Scarica File di Salvataggio (.JSON)</div>
+              <div style="font-size:0.8rem; color:var(--text-muted);">
+                Crea un unico file con tutte le tue transazioni, fatture, categorie e budget. Perfetto per fare backup sul PC o trasferire tutto su un nuovo telefono.
+              </div>
+            </div>
+            <button class="btn btn-primary btn-block" id="btnExportJson">Scarica Backup Completo (.json)</button>
+          </div>
+
+          <div class="backup-box">
+            <div>
+              <div style="font-weight:700; margin-bottom:4px;">📤 2. Carica File di Salvataggio (.JSON)</div>
+              <div style="font-size:0.8rem; color:var(--text-muted);">
+                Ripristina un salvataggio fatto in precedenza dal PC o da un altro telefono.
+              </div>
+            </div>
+            <input type="file" id="fileImportJson" accept=".json" style="display:none;" />
+            <button class="btn btn-secondary btn-block" id="btnImportJson">Seleziona File di Salvataggio...</button>
+          </div>
+
+          <div class="backup-box">
+            <div>
+              <div style="font-weight:700; margin-bottom:4px;">📊 3. Esporta Transazioni per Excel (.CSV)</div>
+              <div style="font-size:0.8rem; color:var(--text-muted);">
+                Scarica la tabella di tutti i movimenti pronta da aprire o incollare nel tuo file Excel sul PC.
+              </div>
+            </div>
+            <button class="btn btn-secondary btn-block" id="btnExportCsv">Esporta Tabella Excel (.csv)</button>
+          </div>
+
+          <div class="backup-box">
+            <div>
+              <div style="font-weight:700; margin-bottom:4px;">🔄 4. Ricarica Dati Originali Excel 2026</div>
+              <div style="font-size:0.8rem; color:var(--text-muted);">
+                Ripristina i dati puliti estratti dal tuo file <i>"Spese anno 2026 Giuseppe Anello - 24 redditi.xlsm"</i>.
+              </div>
+            </div>
+            <button class="btn btn-danger btn-block" id="btnResetOriginal">Ripristina Dati Excel 2026</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Floating + Button for Quick Transaction -->
+  <button class="fab" id="fabAddTx" title="Aggiungi Transazione">+</button>
+
+  <!-- Bottom Navigation Bar (7 Tabs) -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-view="monthly">
+      <span class="nav-icon">📆</span>
+      <span>Mensile</span>
+    </button>
+    <button class="nav-btn" data-view="annual">
+      <span class="nav-icon">📊</span>
+      <span>Annuale</span>
+    </button>
+    <button class="nav-btn" data-view="transactions">
+      <span class="nav-icon">🧾</span>
+      <span>Movimenti</span>
+    </button>
+    <button class="nav-btn" data-view="taxes">
+      <span class="nav-icon">🧮</span>
+      <span>Fatture/Tasse</span>
+    </button>
+    <button class="nav-btn" data-view="budget">
+      <span class="nav-icon">🎯</span>
+      <span>Budget</span>
+    </button>
+    <button class="nav-btn" data-view="categories">
+      <span class="nav-icon">🏷️</span>
+      <span>Categorie</span>
+    </button>
+    <button class="nav-btn" data-view="backup">
+      <span class="nav-icon">💾</span>
+      <span>Backup</span>
+    </button>
+  </nav>
+
+  <!-- MODAL: Nuova / Modifica Transazione -->
+  <div class="modal-backdrop" id="txModal">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <div class="modal-title" id="txModalTitle">Nuovo Movimento</div>
+        <button class="icon-btn" id="closeTxModal">✕</button>
+      </div>
+      <form id="txForm">
+        <input type="hidden" id="txId" />
+
+        <div class="form-group">
+          <label class="form-label">Tipo di Movimento</label>
+          <div class="type-selector" id="txFormTypeSelector">
+            <div class="type-choice selected" data-type="SPESE">🛒 SPESE</div>
+            <div class="type-choice" data-type="REDDITO">💶 REDDITO</div>
+            <div class="type-choice" data-type="DEBITI">💳 DEBITI</div>
+            <div class="type-choice" data-type="RISPARMI">🐖 RISPARMI</div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div class="form-group">
+            <label class="form-label">Data</label>
+            <input type="date" id="txDate" class="input-field" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Importo (€)</label>
+            <input type="number" id="txAmount" class="input-field" step="0.01" placeholder="0.00" required />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Categoria</label>
+          <select id="txCategory" class="input-field" required></select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Descrizione / Note (opzionale)</label>
+          <input type="text" id="txDescription" class="input-field" placeholder="Es. Farmacia, Condominio, Rata..." />
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:16px;">
+          <button type="button" class="btn btn-danger" id="btnDeleteTx" style="display:none;">🗑️ Elimina</button>
+          <button type="submit" class="btn btn-primary btn-block">💾 Salva Movimento</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Nuova / Modifica Fattura -->
+  <div class="modal-backdrop" id="invModal">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <div class="modal-title" id="invModalTitle">Nuova Fattura Emessa</div>
+        <button class="icon-btn" id="closeInvModal">✕</button>
+      </div>
+      <form id="invForm">
+        <input type="hidden" id="invId" />
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div class="form-group">
+            <label class="form-label">Numero Fattura</label>
+            <input type="text" id="invNum" class="input-field" placeholder="Es. 1/2026" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Data Incasso</label>
+            <input type="date" id="invDate" class="input-field" required />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Cliente / Condominio</label>
+          <input type="text" id="invClient" class="input-field" list="condominiClientsList" placeholder="Es. Condominio Via Tramon 28..." required />
+          <datalist id="condominiClientsList"></datalist>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div class="form-group">
+            <label class="form-label">Compenso / Imponibile (€)</label>
+            <input type="number" id="invAmount" class="input-field" step="0.01" placeholder="0.00" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Bollo / Spese Esenti (€)</label>
+            <input type="number" id="invStamp" class="input-field" step="0.01" value="2.00" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Note (opzionale)</label>
+          <input type="text" id="invNotes" class="input-field" placeholder="Es. Compenso gestione ordinaria..." />
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:16px;">
+          <button type="button" class="btn btn-danger" id="btnDeleteInv" style="display:none;">🗑️ Elimina</button>
+          <button type="submit" class="btn btn-primary btn-block">💾 Salva Fattura</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Nuova / Modifica Categoria -->
+  <div class="modal-backdrop" id="catModal">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <div class="modal-title" id="catModalTitle">Nuova Categoria</div>
+        <button class="icon-btn" id="closeCatModal">✕</button>
+      </div>
+      <form id="catForm">
+        <input type="hidden" id="catId" />
+        <div class="form-group">
+          <label class="form-label">Gruppo</label>
+          <select id="catType" class="input-field" required>
+            <option value="REDDITO">💶 REDDITO</option>
+            <option value="SPESE">🛒 SPESE</option>
+            <option value="DEBITI">💳 DEBITI</option>
+            <option value="RISPARMI">🐖 RISPARMI</option>
+          </select>
+        </div>
+        <div style="display:grid; grid-template-columns: 80px 1fr; gap:10px;">
+          <div class="form-group">
+            <label class="form-label">Icona</label>
+            <input type="text" id="catIcon" class="input-field" value="💰" style="text-align:center; font-size:1.2rem;" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nome Categoria</label>
+            <input type="text" id="catName" class="input-field" placeholder="Es. Via Roma 10, Benzina..." required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Budget Mensile Predefinito (€)</label>
+          <input type="number" id="catDefaultBudget" class="input-field" step="0.01" placeholder="0.00" value="0" />
+        </div>
+        <div class="form-group" id="catFlagGroup">
+          <label style="display:flex; align-items:center; gap:8px; font-size:0.84rem; font-weight:700; cursor:pointer;">
+            <input type="checkbox" id="catFlag" style="width:18px; height:18px;" />
+            <span>È una Spesa Fissa / Necessità (Casa, Bollette, Spesa, Salute, Tasse)</span>
+          </label>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:16px;">
+          <button type="button" class="btn btn-danger" id="btnDeleteCat" style="display:none;">🗑️ Elimina</button>
+          <button type="submit" class="btn btn-primary btn-block">💾 Salva Categoria</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="default_data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
