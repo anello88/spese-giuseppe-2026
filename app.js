@@ -1,5 +1,4 @@
 (function () {
-
   // AES-256-GCM Decryption & PIN Gate (PIN: 2410)
   async function decryptPayloadWithPin(pinStr) {
     if (!window.ENCRYPTED_CONTABILITA_B64) return null;
@@ -46,7 +45,6 @@
       if (!unlockedData) return false;
       localStorage.setItem(PIN_STORE, pinVal);
       gate.style.display = 'none';
-      // If local data was empty shell, populate with decrypted data
       if (!state.data || !state.data.categories || state.data.categories.length === 0) {
         state.data = unlockedData;
         ensureDataIntegrity();
@@ -210,6 +208,13 @@
     return HOME_PC_API;
   }
 
+  function countUserRecords(d) {
+    if (!d) return 0;
+    const txLen = Array.isArray(d.transactions) ? d.transactions.length : 0;
+    const invLen = Array.isArray(d.invoices) ? d.invoices.length : 0;
+    return txLen + invLen * 10; // weight invoices strongly so a dataset with invoices is never overwritten by one with 0 invoices
+  }
+
   async function syncWithServerOnStartup() {
     if (location.protocol === 'file:') {
       updateSyncBadge('local', '💻 File Locale');
@@ -224,15 +229,16 @@
       const serverData = await res.json();
       if (!serverData || !Array.isArray(serverData.transactions)) return;
 
+      const localInvLen = state.data && Array.isArray(state.data.invoices) ? state.data.invoices.length : 0;
+      const serverInvLen = Array.isArray(serverData.invoices) ? serverData.invoices.length : 0;
+      const localScore = countUserRecords(state.data);
+      const serverScore = countUserRecords(serverData);
+
       const localTime = state.data && state.data.exportedAt ? new Date(state.data.exportedAt).getTime() : 0;
       const serverTime = serverData.exportedAt ? new Date(serverData.exportedAt).getTime() : 0;
-      const localCount = state.data ? state.data.transactions.length + (state.data.invoices ? state.data.invoices.length : 0) : 0;
-      const serverCount = serverData.transactions.length + (serverData.invoices ? serverData.invoices.length : 0);
 
-      // If local device was still on empty placeholder or server has more/newer data, pull from PC
-      const isLocalEmptyShell = localCount === 0 && serverCount > 0;
-
-      if (!isLocalEmptyShell && (localTime > serverTime || localCount > serverCount)) {
+      // Never overwrite local invoices with an empty server invoice list!
+      if (localInvLen > serverInvLen || localScore > serverScore || (localScore === serverScore && localTime > serverTime)) {
         await pushDataToServer();
       } else {
         state.data = serverData;
@@ -1685,7 +1691,9 @@
       if (confirm('Vuoi eliminare questa fattura dal simulatore fiscale?')) {
         state.data.invoices = state.data.invoices.filter((i) => i.id !== id);
         document.getElementById('invModal').classList.remove('open');
+        state.data.explicitInvoiceClear = true;
         saveData(true);
+        delete state.data.explicitInvoiceClear;
         renderTaxesView();
       }
     });
@@ -1739,7 +1747,9 @@
         }
       });
 
+      state.data.explicitInvoiceClear = true;
       saveData(false);
+      delete state.data.explicitInvoiceClear;
       showToast('✅ Compensi condomini importati nel simulatore tasse!');
       renderTaxesView();
     });
@@ -1995,15 +2005,35 @@
     document.getElementById('btnResetOriginal').addEventListener('click', () => {
       if (
         confirm(
-          'Vuoi ricaricare i dati iniziali estratti dal file Excel 2026? Eventuali modifiche non esportate andranno perse.'
+          'Vuoi ricaricare i dati iniziali? Eventuali modifiche non esportate andranno perse.'
         )
       ) {
-        state.data = JSON.parse(JSON.stringify(window.DEFAULT_CONTABILITA_DATA));
-        ensureDataIntegrity();
-        saveData(false);
-        initYearSelector();
-        renderAll();
-        showToast('🔄 Dati originali Excel 2026 ripristinati!');
+        if (window.ENCRYPTED_CONTABILITA_B64) {
+          // GitHub PWA version: decrypt the real dataset with the saved PIN
+          const savedPin = localStorage.getItem('contabilita_ga_pin_v1') || prompt('Inserisci il tuo PIN per ricaricare i dati:');
+          if (!savedPin) return;
+          decryptPayloadWithPin(savedPin).then((unlocked) => {
+            if (unlocked) {
+              localStorage.setItem('contabilita_ga_pin_v1', savedPin);
+              state.data = JSON.parse(JSON.stringify(unlocked));
+              ensureDataIntegrity();
+              saveData(false);
+              initYearSelector();
+              renderAll();
+              showToast('🔄 Dati originali ripristinati!');
+              syncWithServerOnStartup();
+            } else {
+              alert('PIN errato: impossibile ripristinare.');
+            }
+          });
+        } else {
+          state.data = JSON.parse(JSON.stringify(window.DEFAULT_CONTABILITA_DATA));
+          ensureDataIntegrity();
+          saveData(false);
+          initYearSelector();
+          renderAll();
+          showToast('🔄 Dati originali Excel 2026 ripristinati!');
+        }
       }
     });
   }
