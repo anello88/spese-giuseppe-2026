@@ -1,4 +1,4 @@
-const CACHE_NAME = 'contabilita-ga-pwa-v16';
+const CACHE_NAME = 'contabilita-ga-pwa-v17';
 const ASSETS = [
   './',
   './index.html',
